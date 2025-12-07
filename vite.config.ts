@@ -6,6 +6,8 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Use base for GitHub Pages deployments (project pages)
+  base: process.env.VITE_BASE ?? '/',
   plugins: [
     vue(),
     vueDevTools(),
