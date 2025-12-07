@@ -73,6 +73,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   // Import and replace state from a plain object (with validation)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const importData = (data: any) => {
     if (!data || typeof data !== 'object') return false
 
@@ -80,8 +81,8 @@ export const useCalendarStore = defineStore('calendar', () => {
       // Validate and assign periods
       if (Array.isArray(data.periods)) {
         const validPeriods: Period[] = data.periods
-          .filter((p: any) => p && typeof p.start === 'string' && typeof p.end === 'string')
-          .map((p: any) => ({ start: p.start, end: p.end }))
+          .filter((p: { start: string; end: string }) => p && typeof p.start === 'string' && typeof p.end === 'string')
+          .map((p: { start: string; end: string }) => ({ start: p.start, end: p.end }))
         periods.value = validPeriods
       }
 
