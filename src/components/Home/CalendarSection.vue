@@ -2,12 +2,16 @@
 import { ref, onMounted, nextTick, computed, watch } from 'vue'
 import { useCalendarStore } from '@/stores/calendar'
 import { storeToRefs } from 'pinia'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface CalendarDay {
   date: Date
   dayName: string
   dayNumber: number
   monthName: string
+  monthNumber: number
   year: number
   isoString: string
   isPeriod: boolean
@@ -24,6 +28,8 @@ const firstGeneratedDate = ref<Date>(new Date())
 // Store
 const calendarStore = useCalendarStore()
 const { periods, windowSize, allowance, anchorDate: storeAnchorDate } = storeToRefs(calendarStore)
+// Destructure actions to avoid instance method mismatches during HMR
+const { addPeriod, removePeriod, exportData, importData } = calendarStore
 
 // Computed wrapper for anchorDate to work with Date objects locally
 const anchorDate = computed({
@@ -34,7 +40,47 @@ const anchorDate = computed({
 // State
 const selectionStart = ref<string | null>(null) // ISO string
 
-const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+// Import/Export
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const exportJson = () => {
+  const data = typeof exportData === 'function' ? exportData() : calendarStore.exportData?.()
+  const json = JSON.stringify(data, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  a.download = `calendar-data-${dateStr}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+const triggerImport = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+    fileInputRef.value.click()
+  }
+}
+
+const handleFileChange = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files && input.files[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    const ok =
+      typeof importData === 'function' ? importData(data) : calendarStore.importData?.(data)
+    if (!ok) console.warn('Import failed: invalid data')
+    // After import, re-evaluate day states
+    updateDayStates()
+  } catch (err) {
+    console.error('Failed to import JSON file', err)
+  }
+}
 
 // Stats
 const daysUsed = computed(() => {
@@ -122,6 +168,7 @@ const createDayObject = (date: Date): CalendarDay => {
     dayName: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date),
     dayNumber: date.getDate(),
     monthName: new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date),
+    monthNumber: date.getMonth(),
     year: date.getFullYear(),
     isoString: date.toISOString(),
     isPeriod: false,
@@ -245,7 +292,7 @@ const handleDayClick = (day: CalendarDay) => {
     // Ensure start <= end
     const newPeriod = start <= end ? { start, end } : { start: end, end: start }
 
-    calendarStore.addPeriod(newPeriod)
+    addPeriod(newPeriod)
 
     selectionStart.value = null
   } else {
@@ -264,7 +311,7 @@ const handleDayRightClick = (e: MouseEvent, day: CalendarDay) => {
 
   if (periodIndex !== -1) {
     // Remove period
-    calendarStore.removePeriod(periodIndex)
+    removePeriod(periodIndex)
   } else {
     // Set anchor date
     anchorDate.value = new Date(day.date)
@@ -308,20 +355,31 @@ onMounted(() => {
   <div class="calendar-wrapper">
     <div class="controls">
       <div class="control-group">
-        <label>Window Size (days):</label>
+        <label>{{ t('calendar.windowSizeLabel') }}</label>
         <input type="number" v-model="windowSize" />
       </div>
       <div class="control-group">
-        <label>Allowance (days):</label>
+        <label>{{ t('calendar.allowanceLabel') }}</label>
         <input type="number" v-model="allowance" />
+      </div>
+      <div class="control-group import-export">
+        <button class="btn" @click="exportJson">{{ t('calendar.exportButton') }}</button>
+        <button class="btn" @click="triggerImport">{{ t('calendar.importButton') }}</button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept="application/json,.json"
+          @change="handleFileChange"
+          style="display: none"
+        />
       </div>
       <div class="stats">
         <div class="stat-item">
-          <span class="label">Used:</span>
+          <span class="label">{{ t('calendar.usedLabel') }}:</span>
           <span class="value">{{ daysUsed }}</span>
         </div>
         <div class="stat-item">
-          <span class="label">Remaining:</span>
+          <span class="label">{{ t('calendar.remainingLabel') }}:</span>
           <span class="value" :class="{ 'text-danger': daysRemaining < 0 }">{{
             daysRemaining
           }}</span>
@@ -330,7 +388,9 @@ onMounted(() => {
     </div>
 
     <div class="week-header">
-      <div v-for="day in weekDays" :key="day" class="header-cell">{{ day }}</div>
+      <div v-for="day in [0, 1, 2, 3, 4, 5, 6]" :key="day" class="header-cell">
+        {{ t('calendar.weekDays.' + day) }}
+      </div>
     </div>
     <div
       class="calendar-container"
@@ -354,18 +414,18 @@ onMounted(() => {
         @contextmenu="(e) => handleDayRightClick(e, day)"
       >
         <div class="day-content">
+          <span class="year-label" v-if="day.dayNumber === 1 && day.monthNumber === 0">{{
+            day.year
+          }}</span>
           <span class="month-label" v-if="day.dayNumber === 1 || index === 0">{{
-            day.monthName
+            t('calendar.months.' + day.monthNumber)
           }}</span>
           <span class="day-number">{{ day.dayNumber }}</span>
         </div>
       </div>
     </div>
     <div class="instructions">
-      <small
-        >Left-click twice to select a period. Right-click period to remove. Right-click empty day to
-        set Window Anchor.</small
-      >
+      <small>{{ t('calendar.instructions') }}</small>
     </div>
   </div>
 </template>
@@ -373,22 +433,22 @@ onMounted(() => {
 <style scoped>
 .calendar-wrapper {
   width: 100%;
-  max-width: 800px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 1rem;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: 800px;
+  height: 100vh;
 }
 
 .controls {
   display: flex;
-  gap: 20px;
-  margin-bottom: 15px;
-  padding: 10px;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
   background: #f8f9fa;
-  border-radius: 8px;
+  border-radius: 1rem;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -396,24 +456,41 @@ onMounted(() => {
 .control-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .control-group input {
-  width: 60px;
-  padding: 4px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  width: 3rem;
+  padding: 0.5rem;
+  border: 0.125rem solid #ddd;
+  border-radius: 0.5rem;
 }
 
 .stats {
   display: flex;
-  gap: 20px;
+  gap: 2rem;
   margin-left: auto;
 }
 
 .stat-item {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stat-item .label {
   font-weight: bold;
+}
+
+.btn {
+  padding: 0.5rem;
+  border: 0.125rem solid #ddd;
+  border-radius: 0.25rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #f0f0f0;
 }
 
 .text-danger {
@@ -423,9 +500,9 @@ onMounted(() => {
 .week-header {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
-  padding-right: 10px;
-  margin-bottom: 10px;
+  gap: 1rem;
+  padding-right: 1rem;
+  margin-bottom: 1rem;
   font-weight: bold;
   text-align: center;
   color: #555;
@@ -434,32 +511,32 @@ onMounted(() => {
 .calendar-container {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
+  gap: 0.5rem;
   overflow-y: auto;
-  padding: 10px;
+  padding: 1rem;
   flex-grow: 1;
   outline: none;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 0.125rem solid #ddd;
+  border-radius: 0.5rem;
   background-color: #fff;
 }
 
 .calendar-container:focus {
   border-color: #666;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 0.25rem rgba(0, 0, 0, 0.1);
 }
 
 .calendar-day {
   aspect-ratio: 1;
   background-color: #f8f9fa;
-  border-radius: 8px;
+  border-radius: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
-  border: 1px solid transparent;
+  border: 0.125rem solid transparent;
 }
 
 /* Inactive (Outside Window) */
@@ -483,13 +560,13 @@ onMounted(() => {
 
 /* Selection Start (Pending) */
 .calendar-day.selection-start {
-  border: 2px dashed #007bff;
+  border: 0.25rem dashed #007bff;
   background-color: rgba(0, 123, 255, 0.1);
 }
 
 /* Today */
 .calendar-day.is-today {
-  border: 2px solid #28a745;
+  border: 0.25rem solid #28a745;
 }
 
 .calendar-day:hover {
@@ -505,7 +582,7 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: 1rem;
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
@@ -521,13 +598,21 @@ onMounted(() => {
   align-items: center;
 }
 
+.year-label {
+  font-size: 0.7rem;
+  color: black;
+  position: absolute;
+  top: 0.25rem;
+  right: 0.5rem;
+}
+
 .month-label {
   font-size: 0.7rem;
   color: #dc3545;
   font-weight: bold;
   position: absolute;
-  top: 4px;
-  left: 6px;
+  top: 0.25rem;
+  left: 0.5rem;
 }
 
 .day-number {
@@ -537,7 +622,7 @@ onMounted(() => {
 }
 
 .instructions {
-  margin-top: 10px;
+  margin-top: 1rem;
   text-align: center;
   color: #666;
 }

@@ -62,6 +62,54 @@ export const useCalendarStore = defineStore('calendar', () => {
     anchorDate.value = date.toISOString()
   }
 
+  // Export current store as a plain object
+  const exportData = () => {
+    return {
+      periods: periods.value,
+      windowSize: windowSize.value,
+      allowance: allowance.value,
+      anchorDate: anchorDate.value,
+    }
+  }
+
+  // Import and replace state from a plain object (with validation)
+  const importData = (data: any) => {
+    if (!data || typeof data !== 'object') return false
+
+    try {
+      // Validate and assign periods
+      if (Array.isArray(data.periods)) {
+        const validPeriods: Period[] = data.periods
+          .filter((p: any) => p && typeof p.start === 'string' && typeof p.end === 'string')
+          .map((p: any) => ({ start: p.start, end: p.end }))
+        periods.value = validPeriods
+      }
+
+      // Validate windowSize
+      if (typeof data.windowSize === 'number' && isFinite(data.windowSize) && data.windowSize > 0) {
+        windowSize.value = data.windowSize
+      }
+
+      // Validate allowance
+      if (typeof data.allowance === 'number' && isFinite(data.allowance) && data.allowance >= 0) {
+        allowance.value = data.allowance
+      }
+
+      // Validate anchorDate
+      if (typeof data.anchorDate === 'string') {
+        const d = new Date(data.anchorDate)
+        if (!isNaN(d.getTime())) {
+          anchorDate.value = d.toISOString()
+        }
+      }
+
+      return true
+    } catch (e) {
+      console.error('Failed to import calendar data', e)
+      return false
+    }
+  }
+
   return {
     periods,
     windowSize,
@@ -69,6 +117,8 @@ export const useCalendarStore = defineStore('calendar', () => {
     anchorDate,
     addPeriod,
     removePeriod,
-    setAnchorDate
+    setAnchorDate,
+    exportData,
+    importData,
   }
 })
