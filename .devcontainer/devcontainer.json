@@ -1,0 +1,17 @@
+{
+	"name": "Rolling Window Visualizer",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspace",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"Vue.volar",
+				"dbaeumer.vscode-eslint",
+				"EditorConfig.EditorConfig",
+				"oxc.oxc-vscode",
+				"esbenp.prettier-vscode"
+			]
+		}
+	}
+}
