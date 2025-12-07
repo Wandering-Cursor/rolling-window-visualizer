@@ -104,8 +104,8 @@ const daysUsed = computed(() => {
     const end = pEnd < windowEnd ? pEnd : windowEnd
 
     if (start <= end) {
-      const diffTime = Math.abs(end.getTime() - start.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+      const diffTime = end.getTime() - start.getTime()
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1
       count += diffDays
     }
   })
@@ -408,7 +408,7 @@ onMounted(() => {
           'in-window': day.inWindow,
           'is-inactive': day.isInactive,
           'selection-start': day.isSelectionStart,
-          'is-today': day.date.toDateString() == new Date().toDateString(),
+          'is-today': day.date.toDateString() === new Date().toDateString(),
         }"
         @click="handleDayClick(day)"
         @contextmenu="(e) => handleDayRightClick(e, day)"

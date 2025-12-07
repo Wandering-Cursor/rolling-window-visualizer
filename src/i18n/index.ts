@@ -110,9 +110,16 @@ const messages = {
   }
 };
 
+function getValidLocale() {
+  const storedLocale = localStorage.getItem('locale');
+  return storedLocale && Object.values(Locales).includes(storedLocale as Locales)
+    ? storedLocale
+    : 'en';
+}
+
 const i18n = createI18n({
   legacy: false,
-  locale: localStorage.getItem('locale') || 'en',
+  locale: getValidLocale(),
   fallbackLocale: 'en',
   messages,
 })
